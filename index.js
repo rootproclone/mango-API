@@ -3,6 +3,8 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
+const cors = require('cors');
+
 
 // Create a Nodemailer transporter
 const transporter = nodemailer.createTransport({
@@ -20,6 +22,7 @@ const transporter = nodemailer.createTransport({
 });
 
 const app = express();
+app.use(cors());
 const port = 3000;
 
 mongoose.connect(
