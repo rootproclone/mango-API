@@ -39,7 +39,18 @@ const userSchema = new mongoose.Schema({
   phonenumber: String,
 });
 
+const productSchema = new mongoose.Schema({
+  product_name: { type: String, required: true },
+  produce_address: { type: String, required: true },
+  qty: String,
+  price: { type: String, required: true },
+  rating: { type: String, required: true },
+  stock: { type: String, required: true },
+});
+
 const User = mongoose.model("User", userSchema);
+const product = mongoose.model('product', productSchema);
+
 
 app.use(express.json());
 
@@ -82,11 +93,63 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// Usage in a protected route
-app.get("/protected-route", authenticateToken, (req, res) => {
-  // Access req.user to get the authenticated user's data
-  res.json({ message: "Welcome to the protected route" });
+
+app.get('/products-list', async (req, res) => {
+  try {
+    const products = await product.find();
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 });
+
+app.delete('/product-delete/:productId', async (req, res) => {
+  const productId = req.params.productId; // Access productId from the URL parameter
+  console.log(productId);
+
+  try {
+    const deletedProduct = await product.findByIdAndDelete(productId);
+
+    if (!deletedProduct) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    res.json({ message: 'Product deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+
+app.post('/add-product', authenticateToken, async (req, res) => {
+  try {
+    const productData = req.body;
+    const newProduct = await product.create(productData);
+    res.status(200).json({ success: true, product: newProduct });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+app.put('/update-product/:id', authenticateToken, async (req, res) => {
+  try {
+    const productId = req.params.id;
+    const updateData = req.body;
+
+    const updatedProduct = await product.findByIdAndUpdate(
+      productId,
+      updateData,
+      { new: true }
+    );
+
+    res.status(200).json({ success: true, product: updatedProduct });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
 
 // Registration route
 app.post("/register", async (req, res) => {
