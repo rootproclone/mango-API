@@ -3,23 +3,18 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
-const cors = require('cors');
-
+const cors = require("cors");
+const secretKey = process.env.SECRET_KEY || "mn1f4mfulKNrMZ0aAqbrw";
 
 // Create a Nodemailer transporter
-const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-  auth: {
-    type: "OAuth2",
-    user: process.env.MAIL_USERNAME,
-    pass: process.env.MAIL_PASSWORD,
-    clientId: process.env.OAUTH_CLIENTID,
-    clientSecret: process.env.OAUTH_CLIENT_SECRET,
-    refreshToken: process.env.OAUTH_REFRESH_TOKEN,
-  },
-});
+var transporter = nodemailer.createTransport({
+    host: "sandbox.smtp.mailtrap.io",
+    port: 2525,
+    auth: {
+      user: "fc0afbc7d2cc66",
+      pass: "64de9bca2d1c22"
+    }
+  });
 
 const app = express();
 app.use(cors());
@@ -38,10 +33,10 @@ mongoose.connection.on("error", (error) =>
 
 // Define user schema and model
 const userSchema = new mongoose.Schema({
-  userID: String,
   username: String,
   email: String,
   password: String,
+  phonenumber: String,
 });
 
 const User = mongoose.model("User", userSchema);
@@ -53,10 +48,49 @@ function isValidEmail(email) {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
 }
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ success: false, error: "Internal Server Error" });
+});
+
+const generateToken = (user) => {
+  const token = jwt.sign(user, secretKey, { expiresIn: "15m" });
+  return token;
+};
+
+const authenticateUser = (username, password) => {
+  const user = { id: 1, username: username, password: password };
+  return generateToken(user);
+};
+
+const authenticateToken = (req, res, next) => {
+  const token = req.header("Authorization");
+  console.log("Received token:", token);
+
+  if (!token) return res.sendStatus(401);
+
+  jwt.verify(token.split(" ")[1], secretKey, (err, user) => {
+    if (err) {
+      if (err.name === "TokenExpiredError") {
+        return res.status(401).json({ message: "Token has expired" });
+      }
+      console.error(err);
+      return res.status(403).json({ message: "Invalid token" });
+    }
+    req.user = user;
+    next();
+  });
+};
+
+// Usage in a protected route
+app.get("/protected-route", authenticateToken, (req, res) => {
+  // Access req.user to get the authenticated user's data
+  res.json({ message: "Welcome to the protected route" });
+});
 
 // Registration route
 app.post("/register", async (req, res) => {
-  const { userID, username, email, password } = req.body;
+  const { username, email, password, phonenumber } = req.body;
 
   if (!isValidEmail(email)) {
     return res.status(400).json({ error: "Invalid email format" });
@@ -65,10 +99,10 @@ app.post("/register", async (req, res) => {
   const hashedPassword = await bcrypt.hash(password, 10);
 
   const newUser = new User({
-    userID,
     username,
     email,
     password: hashedPassword,
+    phonenumber,
   });
 
   try {
@@ -85,8 +119,8 @@ app.post("/register", async (req, res) => {
 
     // Generate a token upon successful registration
     const token = jwt.sign(
-      { userID: newUser.userID, username: newUser.username },
-      "secret_key",
+      { phonenumber: newUser.phonenumber, username: newUser.username },
+      secretKey,
       { expiresIn: "1h" }
     );
     // Send confirmation email
@@ -99,6 +133,7 @@ app.post("/register", async (req, res) => {
 
     transporter.sendMail(mailOptions, (error, info) => {
       if (error) {
+        console.log(error, info, mailOptions);
         return res
           .status(500)
           .json({ error: "Error sending confirmation email" });
@@ -126,10 +161,14 @@ app.post("/login", async (req, res) => {
   const validPassword = await bcrypt.compare(password, user.password);
 
   if (validPassword) {
-    const token = jwt.sign({ username: user.username }, "secret_key", {
-      expiresIn: "1h",
-    });
-    return res.status(200).json({ token });
+    const token = authenticateUser(username, password);
+    if (token) {
+      res
+        .status(200)
+        .json({ success: true, token, Message: "successfully login" });
+    } else {
+      res.status(401).json({ success: false, error: "Invalid credentials" });
+    }
   } else {
     return res.status(401).json({ error: "Invalid username or password" });
   }
